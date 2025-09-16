@@ -1,0 +1,49 @@
+name: Build and deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker image
+        run: |
+          docker build -t hello-flask-app:latest .
+
+      - name: Save image to tar
+        run: |
+          docker save hello-flask-app:latest -o hello-flask-app.tar
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          # write the private key (preserves newlines)
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # add remote host to known_hosts to avoid host key verification prompt
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy image tar to EC2
+        run: |
+          scp -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa hello-flask-app.tar "${{ secrets.EC2_USER }}"@"${{ secrets.EC2_HOST }}":~/hello-flask-app.tar
+
+      - name: Deploy on EC2 (load image & restart container)
+        run: |
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/id_rsa "${{ secrets.EC2_USER }}"@"${{ secrets.EC2_HOST }}" << 'EOF'
+            # optional: remove old tar to save space
+            docker load -i ~/hello-flask-app.tar
+            rm -f ~/hello-flask-app.tar
+            docker rm -f hello-flask || true
+            docker run -d --name hello-flask -p 5000:5000 hello-flask-app:latest
+            # show that container is up
+            docker ps --filter "name=hello-flask"
+          EOF
