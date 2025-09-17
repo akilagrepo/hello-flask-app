@@ -2,32 +2,32 @@ name: Flask CI/CD with Docker
 
 on:
   push:
-    branches: ["main"]   # Trigger deployment on push to main branch
+    branches: ["main"]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout repository
+      # Step 1: Checkout repo
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      # Step 2: Setup Python for testing
+      # Step 2: Setup Python
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      # Step 3: Install dependencies & test
+      # Step 3: Install dependencies & test Flask import
       - name: Install dependencies & test
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           python -c "import flask; print('✅ Flask import successful')"
 
-      # Step 4: Deploy to server via SSH & Docker
-      - name: Deploy with Docker
+      # Step 4: Deploy to EC2 via SSH & Docker
+      - name: Deploy with Docker (Verbose)
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -37,27 +37,36 @@ jobs:
           debug: true
           script: |
             echo "== Starting Deployment =="
+            
+            # Server info
             whoami
             pwd
             ls -la /home/ubuntu
 
-            # Go to your Flask app folder on the server
-            cd /home/ubuntu/hello-flask-app
+            # Go to Flask app folder, exit if not exists
+            APP_DIR="/home/ubuntu/hello-flask-app"
+            if [ ! -d "$APP_DIR" ]; then
+              echo "❌ Folder $APP_DIR does not exist!"
+              exit 1
+            fi
+            cd "$APP_DIR"
 
-            # Ensure latest code
+            echo "== Pulling latest code =="
             git reset --hard
             git pull origin main
 
-            # Show Docker version & running containers for debug
-            docker --version
-            docker ps -a
+            echo "== Docker info =="
+            sudo docker --version
+            sudo docker ps -a
 
-            # Build Docker image
-            docker build -t flaskapp .
+            echo "== Building Docker image =="
+            sudo docker build -t flaskapp .
 
-            # Stop & remove old container if exists
-            docker stop flaskapp || true
-            docker rm flaskapp || true
+            echo "== Stopping old container if exists =="
+            sudo docker stop flaskapp || true
+            sudo docker rm flaskapp || true
 
-            # Run new container
-            docker run -d --name flaskapp -p 5000:5000 flaskapp
+            echo "== Running new container =="
+            sudo docker run -d --name flaskapp -p 5000:5000 flaskapp
+
+            echo "✅ Deployment finished!"
