@@ -36,11 +36,21 @@ jobs:
           port: 22
           debug: true
           script: |
-            cd /home/ubuntu/flask-app
+            echo "== Starting Deployment =="
+            whoami
+            pwd
+            ls -la /home/ubuntu
 
-            # Ensure we have latest code
+            # Go to your Flask app folder on the server
+            cd /home/ubuntu/hello-flask-app
+
+            # Ensure latest code
             git reset --hard
             git pull origin main
+
+            # Show Docker version & running containers for debug
+            docker --version
+            docker ps -a
 
             # Build Docker image
             docker build -t flaskapp .
